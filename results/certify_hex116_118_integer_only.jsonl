@@ -1,0 +1,3 @@
+{"hex": 116, "shard": 0, "of": 1, "mode": "dual", "ok": true, "nodes": 3822423842, "hits": 0, "hit_values": [], "seconds": 54.1, "cpu": "arm64", "threads": 10, "binary_sha": "e9bce8ddb35fadde", "source_sha": "bb8682626267c8a0", "time": "2026-11-21T11:38:00"}
+{"hex": 117, "shard": 0, "of": 1, "mode": "dual", "ok": true, "nodes": 10922592466, "hits": 0, "hit_values": [], "seconds": 168.0, "cpu": "arm64", "threads": 10, "binary_sha": "e9bce8ddb35fadde", "source_sha": "bb8682626267c8a0", "time": "2026-11-21T11:40:48"}
+{"hex": 118, "shard": 0, "of": 1, "mode": "dual", "ok": true, "nodes": 52466688904, "hits": 0, "hit_values": [], "seconds": 778.1, "cpu": "arm64", "threads": 10, "binary_sha": "e9bce8ddb35fadde", "source_sha": "bb8682626267c8a0", "time": "2026-11-21T11:53:46"}
