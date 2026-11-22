@@ -1,0 +1,43 @@
+random model: corrected (with the exact b+1 divisibility link of even-length palindromes)
+worlds: 372 (hex_even, hex_odd, oct, quad; even b in 6..200, not powers of 2)
+  hex_even : 93 bases, searched up to 128-600 bits (median 184)
+  hex_odd  : 93 bases, searched up to 131-599 bits (median 187)
+  oct      : 93 bases, searched up to 93-600 bits (median 117)
+  quad     : 93 bases, searched up to 130-600 bits (median 186)
+solutions with >= 32 bits: observed 20, random model expects 20.388, P(>= observed) = 0.564
+  oct       b=146: 75 bits  33225902775912452301959  (hex 7092E0748509703A487, base-b expectation at this size or larger 1.45e-03)
+  oct       b=180: 63 bits  6100759031419316885  (hex 54AA400410012A95, base-b expectation at this size or larger 5.35e-03)
+  hex_even  b= 54: 32 bits  4143554415  (hex F6F99F6F, base-b expectation at this size or larger 8.31e-03)
+  oct       b= 90: 57 bits  126350948095462919  (hex 1C0E38492438E07, base-b expectation at this size or larger 1.14e-02)
+  quad      b= 14: 36 bits  65233010895  (hex F3030C0CF, base-b expectation at this size or larger 1.60e-02)
+  hex_even  b=186: 36 bits  40271634537  (hex 960606069, base-b expectation at this size or larger 1.83e-02)
+  hex_even  b=162: 32 bits  2431651593  (hex 90F00F09, base-b expectation at this size or larger 2.66e-02)
+  quad      b=150: 34 bits  16975384383  (hex 3F3CFCF3F, base-b expectation at this size or larger 2.70e-02)
+  quad      b= 92: 32 bits  3425700915  (hex CC300C33, base-b expectation at this size or larger 2.82e-02)
+  quad      b= 62: 32 bits  3435135795  (hex CCC00333, base-b expectation at this size or larger 3.10e-02)
+  oct       b=188: 51 bits  1501019845862741  (hex 5552B6AB6A555, base-b expectation at this size or larger 3.15e-02)
+  oct       b=  6: 36 bits  43253138565  (hex A12168485, base-b expectation at this size or larger 4.94e-02)
+  oct       b= 42: 33 bits  7790916631  (hex 1D05FF417, base-b expectation at this size or larger 9.41e-02)
+  oct       b= 56: 33 bits  8306749935  (hex 1EF1EF1EF, base-b expectation at this size or larger 1.34e-01)
+  oct       b=124: 33 bits  8315743215  (hex 1EFA82BEF, base-b expectation at this size or larger 1.91e-01)
+  oct       b=142: 33 bits  6125179245  (hex 16D16D16D, base-b expectation at this size or larger 1.92e-01)
+  oct       b=138: 33 bits  7818715287  (hex 1D2082097, base-b expectation at this size or larger 1.95e-01)
+  oct       b=120: 33 bits  6163527149  (hex 16F5FF5ED, base-b expectation at this size or larger 2.00e-01)
+  oct       b=120: 33 bits  8225260719  (hex 1EA4384AF, base-b expectation at this size or larger 2.00e-01)
+  oct       b=100: 33 bits  5731683157  (hex 155A28B55, base-b expectation at this size or larger 2.70e-01)
+most surprising solution: tail 1.45e-03 in its own world; chance of one at least this surprising somewhere among 372 worlds = 0.293
+  hex_even : observed 3, expected 1.624
+  hex_odd  : observed 0, expected 1.250
+  oct      : observed 13, expected 15.245
+  quad     : observed 4, expected 2.269
+solutions below 32 bits (trivial and small, not used in the test): 1442
+calibration bits 12-15: hex_even 17/17.6 | hex_odd 6/7.7 | oct 53/59.3 | quad 15/22.5
+calibration bits 16-19: hex_even 4/6.9 | hex_odd 20/16.8 | oct 19/21.1 | quad 11/17.2
+calibration bits 20-23: hex_even 5/13.3 | hex_odd 2/1.8 | oct 50/36.1 | quad 9/12.4
+calibration bits 24-27: hex_even 3/0.9 | hex_odd 0/1.4 | oct 12/10.4 | quad 3/2.6
+calibration bits 28-31: hex_even 1/1.4 | hex_odd 0/0.7 | oct 9/4.2 | quad 3/1.9
+total nodes 43564432964 rows 29486
+b=10 hex_even searched to 212 bits
+b=10 hex_odd searched to 215 bits
+b=10 oct searched to 123 bits
+b=10 quad searched to 222 bits

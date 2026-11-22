@@ -1,0 +1,4 @@
+(2, 16, b) palindromes with B = 4L <= 160 bits, exhaustive in that class (2 s)
+   b  max B       nodes solutions largest (bits)  expected L>=8  observed L>=8  examples
+   4    160   8,388,520   2097150            160         0.0052        2097128  [0, 0, 0, 0] ... big: ['F000000F', 'F00FF00F', 'F0F00F0F']
+   8    160      87,112     13906            160         0.0074          13898  [0, 0, 0, 0] ... big: ['F6F000F6F', 'F6F090F6F', 'F6FF6FF6F']

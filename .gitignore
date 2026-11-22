@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.o
+engine/tripal
+scripts/siblings/world
+scripts/siblings/sibling
+scripts/formula/lll
+.DS_Store

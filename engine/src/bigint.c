@@ -1,29 +1,44 @@
+/* bigint.c - fixed-width unsigned integers for the search.
+ *
+ * A bn_t is TP_MAX_LIMBS 64-bit words, least significant first. Every candidate N is below 2^TP_MAX_BITS, so no
+ * dynamic allocation is needed anywhere in the hot path. The functions take nw, the number of words actually in use
+ * for the current bit length, and leave the words above nw alone.
+ *
+ * Besides basic bit access this file has the conversions the search needs: decimal output (fast, 19 digits per
+ * division), hex output, decimal input, and an independent "is this a palindrome in base b" test used by the
+ * verify command and the self-tests. */
+
 #include "tripal.h"
 
 /* ================================================================== */
 /* big integer primitives (fixed width, TP_MAX_LIMBS limbs)           */
 /* ================================================================== */
 
+/* a = 0 (first nw words). */
 void bn_zero(bn_t *a, int nw)
 {
     for (int i = 0; i < nw; i++) a->w[i] = 0;
 }
 
+/* Set bit i of a. */
 void bn_setbit(bn_t *a, int i)
 {
     a->w[i >> 6] |= (uint64_t)1 << (i & 63);
 }
 
+/* Clear bit i of a. */
 void bn_clrbit(bn_t *a, int i)
 {
     a->w[i >> 6] &= ~((uint64_t)1 << (i & 63));
 }
 
+/* Return bit i of a (0 or 1). */
 int bn_getbit(const bn_t *a, int i)
 {
     return (int)((a->w[i >> 6] >> (i & 63)) & 1u);
 }
 
+/* 1 if the first nw words of a are all zero. */
 int bn_is_zero(const bn_t *a, int nw)
 {
     uint64_t acc = 0;
@@ -31,6 +46,7 @@ int bn_is_zero(const bn_t *a, int nw)
     return acc == 0;
 }
 
+/* a = a * mul + add, in place (used to parse decimal and hex strings digit by digit). */
 void bn_muladd(bn_t *a, int nw, uint64_t mul, uint64_t add)
 {
     unsigned __int128 carry = add;
@@ -111,6 +127,7 @@ static inline char *put_pad19(char *p, uint64_t v)
 #define TP_D19 10000000000000000000ULL
 static uint64_t g_v19;
 static int      g_v19_ready;
+/* One-time setup for the 19-digits-per-step decimal conversion below (10^19 is the largest power of 10 in 64 bits). */
 static void v19_init(void)
 {
     unsigned __int128 all1 = ~(unsigned __int128)0;
@@ -118,6 +135,7 @@ static void v19_init(void)
     g_v19_ready = 1;
 }
 
+/* Divide the 128-bit value (u1:u0) by 10^19; return the remainder and store the quotient in *q. */
 static inline uint64_t divrem19(uint64_t u1, uint64_t u0, uint64_t *q)
 {   /* requires u1 < TP_D19 */
     const uint64_t d = TP_D19, v = g_v19;
@@ -131,6 +149,7 @@ static inline uint64_t divrem19(uint64_t u1, uint64_t u0, uint64_t *q)
     return r;
 }
 
+/* a = a / 10^19 over its top+1 words; returns the remainder (the next 19 decimal digits, least significant first). */
 static inline uint64_t bn_divmod_d19(bn_t *a, int top)
 {
     uint64_t rem = 0;
@@ -142,6 +161,7 @@ static inline uint64_t bn_divmod_d19(bn_t *a, int top)
     return rem;
 }
 
+/* Write a in decimal (no leading zeros, "0" for zero) into out; returns the number of digits. */
 int bn_to_dec(const bn_t *a, int nw, char *out)
 {
     bn_t t = *a;
@@ -164,6 +184,7 @@ int bn_to_dec(const bn_t *a, int nw, char *out)
     return (int)(p - out);
 }
 
+/* Write a in lower-case hexadecimal (no prefix) into out; returns the number of digits. */
 int bn_to_hex(const bn_t *a, int nw, char *out)
 {
     static const char hx[] = "0123456789abcdef";
@@ -184,6 +205,7 @@ int bn_to_hex(const bn_t *a, int nw, char *out)
     return (int)(p - out);
 }
 
+/* Parse a decimal string into out; returns 0 on a non-digit character, 1 on success. */
 int bn_from_dec(const char *s, int nw, bn_t *out)
 {
     bn_zero(out, nw);
@@ -215,6 +237,7 @@ int bn_cmp(const bn_t *a, const bn_t *b, int nw)
     return 0;
 }
 
+/* 1 if the string s of length len reads the same in both directions. */
 int tp_is_pal_str(const char *s, int len)
 {
     for (int i = 0, j = len - 1; i < j; i++, j--)
@@ -222,6 +245,8 @@ int tp_is_pal_str(const char *s, int len)
     return 1;
 }
 
+/* 1 if a is a palindrome in the given base. Written directly from the definition (repeated division), sharing no
+ * code with the search, so the verify command and the tests can use it as an independent referee. */
 int tp_is_pal_base(const bn_t *a, int nw, int base)
 {
     bn_t t = *a;

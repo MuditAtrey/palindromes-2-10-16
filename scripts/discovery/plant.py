@@ -1,7 +1,7 @@
 """Planted solutions at full scale (engine offset mode, TP_OFFSET=c).
 
 The engine can search for base-2/16 palindromes N such that N + c is a decimal palindrome. With c = 0 that is the real
-problem; for a planted instance we pick a candidate N0 (hex digits from {0,6,9,F}, mirrored, B = 4L) and a decimal
+problem; for a planted instance, pick a candidate N0 (hex digits from {0,6,9,F}, mirrored, B = 4L) and a decimal
 palindrome P0 > N0, and set c = P0 - N0. The search must then report P0. This gives:
   * a positive control for the whole engine stack at real lengths (exact mode must find every plant), and
   * a measurement of discovery mode: which plants a pruned/seeded run still finds, and how fast it is.
@@ -12,7 +12,7 @@ Usage:
 ENGINE_ENV items look like TP_DUAL=1 (defaults: TP_DUAL=1 TP_CVP=1, --r5 0).
 """
 import os, random, re, subprocess, sys, time
-BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../agent_submission_v18/tripal/tripal")
+BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../engine/tripal")
 CLEAN = [k for k in os.environ if k.startswith("TP_")]
 
 def make_plant(L, rnd):

@@ -1,7 +1,7 @@
 # Method
 
-This describes how the search works and why each pruning step is sound. The implementation itself is held back for now
-and is fixed by the cryptographic commitment in [COMMITMENT.md](COMMITMENT.md).
+This describes how the search works and why each pruning step is sound. The implementation is in [engine/](engine)
+(see its [README](engine/README.md)), and matches the cryptographic commitment described in [COMMITMENT.md](COMMITMENT.md).
 
 ## 1. Candidates
 

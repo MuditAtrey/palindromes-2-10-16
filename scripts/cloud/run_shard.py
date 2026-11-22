@@ -14,7 +14,7 @@ ap.add_argument("--threads", type=int, default=os.cpu_count() or 4)
 ap.add_argument("--out", default="shard_results.jsonl")
 ap.add_argument("--mode", choices=("dual", "stack"), default="dual")
 a = ap.parse_args()
-root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../agent_submission_v18/tripal")
+root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../engine")
 binp = os.path.join(root, "tripal")
 sha = hashlib.sha256(open(binp, "rb").read()).hexdigest()[:16]
 src = hashlib.sha256(open(os.path.join(root, "src/search.c"), "rb").read()).hexdigest()[:16]

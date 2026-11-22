@@ -4,7 +4,7 @@
 set -euo pipefail
 sudo apt-get update -y
 sudo apt-get install -y build-essential python3 libflint-dev libgmp-dev libmpfr-dev git
-cd "$(dirname "$0")/../../agent_submission_v18/tripal"
+cd "$(dirname "$0")/../../engine"
 make clean >/dev/null 2>&1 || true
 make
 # self-checks before any shard is trusted: brute force, OEIS A007632, re-verification

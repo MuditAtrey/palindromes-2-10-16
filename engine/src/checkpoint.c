@@ -31,6 +31,7 @@ struct tp_ckpt {
     uint64_t   loaded;
 };
 
+/* Hash of a work-unit key (B, split depth, path) for the in-memory done-set. */
 static size_t hash_rec(int B, int depth, uint64_t path)
 {
     uint64_t h = (uint64_t)B * 0x9E3779B97F4A7C15ULL;
@@ -42,6 +43,7 @@ static size_t hash_rec(int B, int depth, uint64_t path)
     return (size_t)h;
 }
 
+/* Grow the open-addressing hash table so it stays at most half full. */
 static void tab_grow(tp_ckpt *c, size_t need)
 {
     size_t cap = 64;
@@ -62,6 +64,7 @@ static void tab_grow(tp_ckpt *c, size_t need)
     c->tabcap = cap;
 }
 
+/* Insert a finished work unit into the done-set. */
 static void tab_put(tp_ckpt *c, int B, int depth, uint64_t path)
 {
     if (!c->tab || c->nrec * 2 >= c->tabcap) tab_grow(c, c->nrec + 1);
@@ -78,6 +81,7 @@ static void tab_put(tp_ckpt *c, int B, int depth, uint64_t path)
     c->nrec++;
 }
 
+/* 1 if the work unit is already in the done-set. */
 static int tab_has(tp_ckpt *c, int B, int depth, uint64_t path)
 {
     if (!c->tab) return 0;
@@ -105,6 +109,8 @@ static int mkpath(const char *path)
     return 0;
 }
 
+/* Open (or create) the checkpoint directory and load done.log, so a restarted run skips finished units.
+ * With enable = 0 the checkpoint is a no-op object and nothing touches the disk. */
 tp_ckpt *tp_ckpt_open(const char *dir, int enable)
 {
     tp_ckpt *c = (tp_ckpt *)calloc(1, sizeof *c);
@@ -150,6 +156,7 @@ tp_ckpt *tp_ckpt_open(const char *dir, int enable)
     return c;
 }
 
+/* Close the log files and free the checkpoint. */
 void tp_ckpt_close(tp_ckpt *c)
 {
     if (!c) return;
@@ -160,12 +167,14 @@ void tp_ckpt_close(tp_ckpt *c)
     free(c);
 }
 
+/* 1 if this work unit finished in an earlier run. */
 int tp_ckpt_is_done(tp_ckpt *c, int B, int depth, uint64_t path)
 {
     if (!c || !c->enabled) return 0;
     return tab_has(c, B, depth, path);
 }
 
+/* Record a finished work unit: append to done.log and fsync before returning, so a crash never loses it. */
 void tp_ckpt_mark(tp_ckpt *c, int B, int depth, uint64_t path)
 {
     if (!c || !c->enabled) return;
@@ -179,6 +188,7 @@ void tp_ckpt_mark(tp_ckpt *c, int B, int depth, uint64_t path)
     pthread_mutex_unlock(&c->mu);
 }
 
+/* Record a solution immediately (append plus fsync): a hit must survive any crash that follows. */
 void tp_ckpt_hit(tp_ckpt *c, int B, const char *dec, const char *hex)
 {
     if (!c || !c->enabled) return;
@@ -193,6 +203,7 @@ void tp_ckpt_hit(tp_ckpt *c, int B, const char *dec, const char *hex)
 
 uint64_t tp_ckpt_loaded(tp_ckpt *c) { return c ? c->loaded : 0; }
 
+/* Path of hits.log, for the final report. */
 const char *tp_ckpt_hits_path(tp_ckpt *c)
 {
     return c ? c->hits_path : "";

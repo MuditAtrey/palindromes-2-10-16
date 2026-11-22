@@ -98,6 +98,7 @@ typedef struct {
     int      cut_used;    /* cut actually used after back-off       */
 } tp_stats;
 
+/* Callback for every solution found: bit length, the number, and its decimal string. */
 typedef void (*tp_hit_fn)(void *ud, int B, const bn_t *n,
                           const char *dec, int declen);
 
@@ -127,6 +128,7 @@ typedef struct {
     tp_stats  st;
 } tp_search;
 
+/* Orbit DFS (the `search` command): set up, enumerate work units, run one unit. */
 void tp_search_init(tp_search *s, const tp_orbits *o, int nw, int stop_depth,
                     tp_unit *units, int unit_cap);
 void tp_search_roots(const tp_search *s, char *dlo, int *dl, char *dhi, int *dh);

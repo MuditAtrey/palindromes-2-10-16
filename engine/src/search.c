@@ -19,6 +19,29 @@
  * statements must agree on the low k bits, otherwise the entire subtree of
  * 2^(remaining) completions is discarded at once.
  */
+/* How this file is organised (production path first):
+ *
+ *   hexdfs()          the search actually used for every certified length. It walks hex digit PAIRS from the outside
+ *                     in (digit d and its mirror L-1-d are decided together), so after d levels the low 4d bits and
+ *                     the top hex digits are fixed. Each node keeps lo/hi as above, plus running residues of lo
+ *                     modulo 11, 5^J and 5^K, and applies, in order:
+ *                       - the 2-adic test from the comment above (shared decimal prefix, mirrored, against low bits);
+ *                       - R5: the 5-adic reach test. The mirrored decimal prefix fixes N mod 5^J; the orbits not yet
+ *                         decided can only add a set of residues (precomputed per level by subset sums, r5_build).
+ *                         If the target residue is not reachable the subtree is empty;
+ *                       - optional deeper 5-adic tests: a Bloom filter (bf_build), the dual-lattice window
+ *                         certificate (dual_build) and exact lattice enumeration (cvp_build). The certified runs for
+ *                         116-118 hex digits used the dual certificate with integer arithmetic only;
+ *                       - at leaves, the decimal palindrome test itself (plus a cheap mod 11 sieve).
+ *   hexplan_*         per-bit-length precomputation shared by all threads (viable digits, masks, reach tables).
+ *   hexdfs_mt_once / tp_hexdfs_run_mt   threading: the tree is cut at a fixed depth into tasks shared by workers;
+ *                     if the task array would overflow, the cut is made shallower instead of dropping tasks.
+ *   dfs() and tp_search_*               the original bit-by-bit orbit DFS (the `search` command); kept as a
+ *                     second, structurally different implementation for cross-checks.
+ *
+ * Soundness rule: every test may only remove a subtree when NO completion of it can be a decimal palindrome. The
+ * TEST ONLY switches below (TP_WEAKPAL, TP_OFFSET, TP_*CHK) exist to prove that, because a search whose true answer
+ * is "nothing" cannot otherwise detect a test that removes too much. */
 #include <pthread.h>
 #ifdef TP_FLINT
 #include <flint/fmpz.h>
@@ -35,6 +58,7 @@
 
 /* ------------------------------------------------------------------ */
 
+/* Reset lo/hi for a fresh run: forced orbits set in both, free orbits clear in lo and set in hi. */
 static void setup_state(tp_search *s)
 {
     const tp_orbits *o = s->o;
@@ -47,6 +71,7 @@ static void setup_state(tp_search *s)
     }
 }
 
+/* Initialise a search object for one orbit structure (bit length) and optional work-unit splitting. */
 void tp_search_init(tp_search *s, const tp_orbits *o, int nw, int stop_depth,
                     tp_unit *units, int unit_cap)
 {
@@ -59,6 +84,7 @@ void tp_search_init(tp_search *s, const tp_orbits *o, int nw, int stop_depth,
     setup_state(s);
 }
 
+/* Decimal strings of the root interval [lo, hi], the starting point of the orbit DFS. */
 void tp_search_roots(const tp_search *s, char *dlo, int *dl, char *dhi, int *dh)
 {
     *dl = bn_to_dec(&s->lo, s->nw, dlo);
@@ -71,6 +97,7 @@ static uint64_t g_m0 = 0, g_calls = 0;   /* diagnostics: m==0 rate */
  * number from its bit length plus one or two comparisons. */
 static bn_t g_pow10[TP_DECBUF];
 static int  g_pow10_max = -1;
+/* Make sure the table of powers of ten reaches 10^k. */
 static void pow10_ensure(int k)
 {
     const int nw = TP_MAX_LIMBS;
@@ -87,6 +114,7 @@ static void pow10_ensure(int k)
     if (k > g_pow10_max) g_pow10_max = k;
 }
 
+/* Number of significant bits in a. */
 static int bn_bitlen(const bn_t *a, int nw)
 {
     for (int i = nw - 1; i >= 0; i--)
@@ -134,6 +162,9 @@ static int g_off = 0; static bn_t g_offc;
 static uint64_t g_off5N = 0, g_off5 = 0, g_offkN = 0, g_offk = 0;
 static uint64_t off_mod(uint64_t m) { bn_t t = g_offc; return bn_divmod_small(&t, TP_MAX_LIMBS, m); }
 static pthread_once_t g_off_once = PTHREAD_ONCE_INIT;
+/* TEST ONLY: read TP_OFFSET=c. The search then looks for N with N + c a decimal palindrome. With c = P0 - N0 for a
+ * chosen candidate N0 and decimal palindrome P0, the answer N0 is planted and must be found (full-size positive
+ * control). c = 0 is the real problem and gives identical node counts. */
 static void off_parse(void)
 {
     const char *e = getenv("TP_OFFSET");
@@ -153,6 +184,9 @@ static int g_badprune = 0; /* TEST ONLY: deliberately unsound over-prune     */
 static int g_depthhist = 0;
 static uint64_t g_dnode[256], g_dprune[256];
 static int g_decchk = 0;
+/* The 2-adic test for one decimal length. dlo/dhi are lo and hi in decimal with the same length dl. If they share a
+ * prefix of m digits, every N in the subtree ends with that prefix reversed, so N mod 2^k is known (k = min(m, r));
+ * the low r bits are already fixed by the hex digits decided so far. Returns 1 (prune) when the two disagree. */
 static inline __attribute__((always_inline)) int prune_cell(const tp_search *s, int r,
                              const char *dlo, const char *dhi, int dl)
 {
@@ -192,6 +226,7 @@ static inline __attribute__((always_inline)) int prune_cell(const tp_search *s, 
     return 0;
 }
 
+/* Same test when the shared prefix length m is already known (hi is never converted on the fast path). */
 static inline __attribute__((always_inline)) int prune_cell_lo(const tp_search *s,
                                                                int r, const char *dlo, int m)
 {
@@ -224,6 +259,8 @@ static inline __attribute__((always_inline)) int prune_cell_lo(const tp_search *
 }
 
 
+/* The interval [lo, hi] crosses a power of ten, so N may have dl or dl+1 decimal digits. Split it into the two cells
+ * [lo, 10^dl - 1] and [10^dl, hi] and prune only if BOTH are empty. */
 static __attribute__((noinline)) int prune_straddle(const tp_search *s, int r,
                                                     const char *dlo, int dl,
                                                     const char *dhi, int dh)
@@ -245,6 +282,7 @@ static __attribute__((noinline)) int prune_straddle(const tp_search *s, int r,
     return 1;                                   /* every cell is empty      */
 }
 
+/* Dispatch the 2-adic test: one decimal length, or two when the interval straddles a power of ten. */
 static inline __attribute__((always_inline)) int prune_check(const tp_search *s, int r,
                               const char *dlo, int dl,
                               const char *dhi, int dh)
@@ -289,6 +327,7 @@ static const char g_lut2[200] =
     "60616263646566676869" "70717273747576777879"
     "80818283848586878889" "90919293949596979899";
 
+/* Convert a to dec9 form (base 10^9 chunks), the representation the hot loop keeps for incremental decimal updates. */
 static void dec9_from_bn(const bn_t *x, int nw, dec9 *d)
 {
     uint64_t tmp[TP_MAX_BITS / 64 + 2];
@@ -311,6 +350,7 @@ static void dec9_from_bn(const bn_t *x, int nw, dec9 *d)
     }
 }
 
+/* dst = a + b in dec9 form (carry propagation in base 10^9). */
 static void dec9_add(dec9 *dst, const dec9 *a, const dec9 *b)
 {
     const int nc = a->nc > b->nc ? a->nc : b->nc;
@@ -375,6 +415,7 @@ static uint64_t g_p10w[TP_DECBUF][TP_MAX_LIMBS]; /* 10^i mod 2^(64*TP_MAX_LIMBS)
 static const uint32_t g_p10_32[10] = {1u,10u,100u,1000u,10000u,100000u,1000000u,
                                       10000000u,100000000u,1000000000u};
 static pthread_once_t g_p10_once = PTHREAD_ONCE_INIT;
+/* One-time table of powers of ten for dec9 digit extraction. */
 static void p10w_init(void)
 {
     memset(g_p10w, 0, sizeof g_p10w);
@@ -387,6 +428,7 @@ static void p10w_init(void)
         }
     }
 }
+/* Number of decimal digits of a 32-bit value (0 has 1). */
 static inline int ilog10_u32(uint32_t v)
 {
     const int t = ((32 - __builtin_clz(v | 1u)) * 1233) >> 12;
@@ -472,6 +514,7 @@ struct hexplan {
                                          from hi, first-assignment only */
 };
 
+/* Fill the static parts of a plan: hex length L, number of digit-pair levels, and the bit sites of each nibble. */
 static void hexplan_init(hexplan *p, const tp_orbits *o)
 {
     p->L = (o->nsites + 3) / 4;
@@ -558,6 +601,7 @@ static void bs_shl(uint64_t *dst, const uint64_t *src, size_t W, uint64_t M)
         dst[i] = v;
     }
 }
+/* Bitset helper for subset sums mod N: cur |= src shifted right by S (wrapping part). */
 static void bs_shr_or(uint64_t *dst, const uint64_t *src, size_t W, uint64_t S)
 {   /* dst |= src >> S */
     const size_t ws = (size_t)(S >> 6); const unsigned bs = (unsigned)(S & 63);
@@ -567,6 +611,7 @@ static void bs_shr_or(uint64_t *dst, const uint64_t *src, size_t W, uint64_t S)
         dst[i] |= v;
     }
 }
+/* cur |= cur rotated left by M (mod N): adds residue M to every reachable residue. */
 static void bs_rotl_or(uint64_t *cur, uint64_t *tmp, size_t W, uint64_t N, uint64_t M)
 {   /* cur |= rotl(cur, M) over N bits */
     bs_shl(tmp, cur, W, M);                    /* bits shifted up (may spill past N) */
@@ -574,9 +619,14 @@ static void bs_rotl_or(uint64_t *cur, uint64_t *tmp, size_t W, uint64_t N, uint6
     if (N & 63) tmp[W - 1] &= (1ull << (N & 63)) - 1;
     for (size_t i = 0; i < W; i++) cur[i] |= tmp[i];
 }
+/* Number of set bits in a bitset of W words (how many residues are reachable). */
 static uint64_t bs_popcount(const uint64_t *a, size_t W)
 { uint64_t c = 0; for (size_t i = 0; i < W; i++) c += (uint64_t)__builtin_popcountll(a[i]); return c; }
 
+/* Build the R5 reach tables for this bit length (cached across calls with the same orbits and J).
+ * tab[d] is a bitset over Z/5^J: residue x is set when some 0/1 choice of the orbits decided AFTER level d adds x to
+ * N mod 5^J. Built from the deepest level upwards, one subset-sum step per orbit; a level whose set is already every
+ * residue gets NULL (the test would be vacuous there). Memory is 5^J bits per level. */
 static void r5_build(hexplan *p, const tp_orbits *o, const int *lvl)
 {
     pthread_mutex_lock(&g_r5_mu);
@@ -640,13 +690,16 @@ static int g_bchk = 0;      /* TP_BLOOMCHK: verify carried residue/target and sa
 static uint64_t g_bchk_n = 0, g_bchk_t = 0;
 static const uint32_t g_bfs[8] = { 0x47b6137bU, 0x44974d91U, 0x8824ad5bU, 0xa2b7289dU,
                                    0x705495c7U, 0x2df1424bU, 0x9efc4947U, 0x5c6bfb31U };
+/* 64-bit finaliser (splitmix style) used to hash residues into the Bloom filter. */
 static inline uint64_t bf_mix(uint64_t x)
 {
     x ^= x >> 33; x *= 0xff51afd7ed558ccdULL; x ^= x >> 33; x *= 0xc4ceb9fe1a85ec53ULL; x ^= x >> 33;
     return x;
 }
+/* The 256-bit block of the blocked Bloom filter that hash h falls into. */
 static inline uint32_t *bf_block(const bfilter *f, uint64_t h)
 { return f->w + 8 * (size_t)(((h >> 32) * f->nb) >> 32); }
+/* Bloom lookup: 0 means residue x is certainly NOT reachable (prune); 1 means maybe. Never a false 0. */
 static inline int bf_has(const bfilter *f, uint64_t x)
 {
     const uint64_t h = bf_mix(x);
@@ -655,6 +708,7 @@ static inline int bf_has(const bfilter *f, uint64_t x)
         if (!((b[i] >> (((uint32_t)h * g_bfs[i]) >> 27)) & 1u)) return 0;
     return 1;
 }
+/* Bloom insert (thread-safe with atomic OR). */
 static inline void bf_add_h(bfilter *f, uint64_t h)
 {
     uint32_t *b = bf_block(f, h);
@@ -662,6 +716,7 @@ static inline void bf_add_h(bfilter *f, uint64_t h)
         __atomic_fetch_or(&b[i], 1u << (((uint32_t)h * g_bfs[i]) >> 27), __ATOMIC_RELAXED);
 }
 typedef struct { bfilter *f; const uint64_t *M; int u, p; uint64_t N; uint64_t next; } bf_job;
+/* Thread body that inserts a share of the reachable residues (meet-in-the-middle halves) into a Bloom filter. */
 static void *bf_worker(void *arg)
 {
     bf_job *J = arg;
@@ -718,14 +773,19 @@ static int g_duchk = 0;
 static int g_noshare = 0;                   /* TP_NOSHARE: recompute every product per child (reference path) */
 static inline int u256_ge(const u256 *a, const u256 *b)
 { for (int i = 3; i >= 0; i--) { if (a->w[i] != b->w[i]) return a->w[i] > b->w[i]; } return 1; }
+/* 256-bit helpers for the lattice certificates: r = a - b. */
 static inline void u256_sub(u256 *r, const u256 *a, const u256 *b)
 { uint64_t br = 0; for (int i = 0; i < 4; i++) { const __uint128_t t = (__uint128_t)a->w[i] - b->w[i] - br; r->w[i] = (uint64_t)t; br = (uint64_t)(t >> 64) & 1; } }
+/* r = a + b. */
 static inline void u256_add(u256 *r, const u256 *a, const u256 *b)
 { uint64_t c = 0; for (int i = 0; i < 4; i++) { const __uint128_t t = (__uint128_t)a->w[i] + b->w[i] + c; r->w[i] = (uint64_t)t; c = (uint64_t)(t >> 64); } }
+/* r = a + b mod N (inputs already reduced). */
 static inline void u256_addmod(u256 *r, const u256 *a, const u256 *b, const u256 *N)
 { u256 t; u256_add(&t, a, b); if (u256_ge(&t, N)) u256_sub(r, &t, N); else *r = t; }
+/* r = a - b mod N. */
 static inline void u256_submod(u256 *r, const u256 *a, const u256 *b, const u256 *N)
 { if (u256_ge(a, b)) u256_sub(r, a, b); else { u256 t; u256_add(&t, a, N); u256_sub(r, &t, b); } }
+/* Montgomery multiplication r = a * b * R^-1 mod N (N odd, here N = 5^K). */
 static inline void u256_mont(u256 *r, const u256 *a, const u256 *b, const u256 *N, uint64_t n0, int nl)
 {
     uint64_t t[6] = {0,0,0,0,0,0};
@@ -741,6 +801,7 @@ static inline void u256_mont(u256 *r, const u256 *a, const u256 *b, const u256 *
     u256 z = {{0,0,0,0}}; for (int i = 0; i < nl; i++) z.w[i] = t[i];
     if (t[nl] || u256_ge(&z, N)) u256_sub(r, &z, N); else *r = z;
 }
+/* Reduce an nw-word integer modulo N into a u256, using precomputed 2^64 mod N. */
 static inline void mod_reduce(u256 *out, const uint64_t *x, int nw, const u256 *N, uint64_t n0, const u256 *c64, int nl)
 {
     u256 a = {{0,0,0,0}}, t;
@@ -764,8 +825,13 @@ static inline int dual_pass_child(const duallev *L, const u256 *base, int k, u25
     }
     return 1;
 }
+/* N mod 5^K for the dual certificate of level L. */
 static inline void dual_reduce(u256 *out, const uint64_t *x, int nw, const duallev *L)
 { mod_reduce(out, x, nw, &L->N, L->n0, &L->c64, L->nl); }
+/* Dual-lattice certificate. For each short dual vector lam_i, the reachable residues q satisfy lam_i * q mod N within
+ * a window [sum of negative parts, sum of positive parts] of lam_i * (orbit contributions). If any window rejects q,
+ * no completion reaches the target: prune. Exact integer arithmetic, no false rejections, no tables. Returns 1 if q
+ * passes every window (keep the subtree). */
 static inline int dual_pass(const duallev *L, const u256 *q)
 {
     for (int i = 0; i < L->nt; i++) {
@@ -788,12 +854,14 @@ static inline int dual_pass(const duallev *L, const u256 *q)
     return 1;
 }
 #ifdef TP_FLINT
+/* FLINT integer to u256. */
 static void f2u(u256 *r, const fmpz_t x)
 {
     fmpz_t t, l; fmpz_init_set(t, x); fmpz_init(l);
     for (int i = 0; i < 4; i++) { fmpz_fdiv_r_2exp(l, t, 64); r->w[i] = fmpz_get_ui(l); fmpz_fdiv_q_2exp(t, t, 64); }
     fmpz_clear(t); fmpz_clear(l);
 }
+/* nw 64-bit words to a FLINT integer. */
 static void limbs2f(fmpz_t r, const uint64_t *w, int nw)
 {
     fmpz_zero(r);
@@ -807,6 +875,7 @@ static void limbs2f(fmpz_t r, const uint64_t *w, int nw)
 static int cmp_dpi(const void *a, const void *b)
 { const double x = *(const double *)a, y = *(const double *)b; return (x > y) - (x < y); }
 static uint64_t dl_rng(uint64_t *s) { uint64_t x = *s; x ^= x << 13; x ^= x >> 7; x ^= x << 17; return *s = x; }
+/* Optional (TP_DUAL_POOL): choose the certificate's windows from a larger pool of lattice vectors, greedily by how many residues each newly rejects. Any integer combination is sound, so this only affects speed. */
 static void dual_learn(duallev *L, const fmpz_mat_t A, const fmpz_t N, const fmpz_t R, int d, int dbg)
 {
     const int P = atoi(getenv("TP_DUAL_POOL")), u = L->u;
@@ -939,6 +1008,7 @@ static int spec_chol_ok(const double *A, int u, double mu)
     }
     free(L); return ok;
 }
+/* Spectral design helper (TP_SPEC experiment): smallest eigenvalue bound used to test positive definiteness. */
 static double spec_mu(const double *A, int u)
 {
     double *x = malloc(sizeof(double) * (size_t)u), *y = malloc(sizeof(double) * (size_t)u); double mu = 0;
@@ -954,6 +1024,7 @@ static double spec_mu(const double *A, int u)
     mu *= 1.000001; while (!spec_chol_ok(A, u, mu)) mu *= 1.0001;
     return mu;
 }
+/* Symmetric eigen-decomposition by Jacobi rotations (small matrices, experiment only). */
 static void jacobi_eig(double *A, int n, double *ev, double *V)
 {
     for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) V[(size_t)i * n + j] = (i == j);
@@ -1022,6 +1093,7 @@ static void spec_diag(const double *A, int u, double *D, int iters)
     memcpy(D, bestD, sizeof(double) * (size_t)u);
     free(M); free(V); free(ev); free(bestD); free(gv);
 }
+/* Experimental (TP_SPEC): Fourier-style weighted windows for the dual certificate. Not used in the certified runs. */
 static void dual_spec(duallev *L, const fmpz_mat_t A, const fmpz_t N, const fmpz_t R, int d, int dbg)
 {
     const int u = L->u, n = u + 1;
@@ -1137,6 +1209,10 @@ static void dual_spec(duallev *L, const fmpz_mat_t A, const fmpz_t N, const fmpz
     fmpz_clear(t); fmpz_clear(lam); fmpz_clear(ss);
 }
 #endif
+/* Build the dual-lattice certificates (TP_DUAL, needs FLINT). For each level d with enough undecided orbits u, form the
+ * lattice of integer combinations of the orbit contributions modulo N = 5^K, LLL-reduce it, and keep the short dual
+ * vectors as windows (see dual_pass). Cached per bit length. Only on the default fast path, and skipped for
+ * B = 1, 2 mod 4 where the trees are tiny. */
 static void dual_build(hexplan *p, const tp_orbits *o, const int *lvl)
 {
     memset(p->dual, 0, sizeof p->dual);
@@ -1315,15 +1391,19 @@ typedef struct {
     int rc[TP_CVP_MX];
     double p[TP_CVP_MX + 1][TP_CVP_MX];     /* p[i] = projection of (x - centre) onto b*_i .. b*_{n-1} */
 } cvp_st;
+/* u256 to double (approximate; used only to guide enumeration, never to decide). */
 static inline double u256_dbl(const u256 *a)
 { return ldexp((double)a->w[3], 192) + ldexp((double)a->w[2], 128) + ldexp((double)a->w[1], 64) + (double)a->w[0]; }
+/* Exact lattice enumeration (TP_CVP): depth-first Schnorr-Euchner style search for a 0/1 choice of undecided orbits
+ * whose contribution hits the target residue, inside the box the choices allow. Finding none proves the subtree empty.
+ * A node budget caps the work; exceeding it means "keep the subtree" (never an unsound prune). */
 static void cvp_rec(cvp_st *S, int i, double rho)
 {
     const cvplev *L = S->L;
     const int top = S->rc[i];
     for (int j = top; j > i; j--) S->sum[i][j] = S->sum[i][j + 1] + S->y[j] * L->mu[j][i];
     S->rc[i] = i;
-    if (i > 0 && S->rc[i - 1] < top) S->rc[i - 1] = top;   /* the level below must see these changes even if we never descend */
+    if (i > 0 && S->rc[i - 1] < top) S->rc[i - 1] = top;   /* the level below must see these changes even if the search never descends */
     const double c = L->h[i] - S->sum[i][i + 1];
     const double room = S->R2 - rho;
     double w = (room > 0) ? sqrt(room / L->n2[i]) : 0.0;
@@ -1402,6 +1482,7 @@ static inline int cvp_keep(const cvplev *L, const u256 *q, long *nodes)
 #ifdef TP_FLINT
 /* BKZ: strengthen the LLL basis once per level, offline.  Entries are small, so exact int64 rows are fine. */
 typedef struct { int n; const double *n2; const double (*mu)[TP_CVP_MX]; double best; long c[TP_CVP_MX], bc[TP_CVP_MX]; int k, found; long nodes; } svp_t;
+/* Shortest-vector enumeration inside a BKZ block (offline basis improvement, optional). */
 static void svp_rec(svp_t *T, int i, double rho, int nz)
 {
     if (T->nodes > 20000000) return;
@@ -1422,6 +1503,7 @@ static void svp_rec(svp_t *T, int i, double rho, int nz)
     }
     T->c[i] = 0;
 }
+/* Gram-Schmidt orthogonalisation of an integer basis (doubles), for enumeration bounds. */
 static void gso_i64(long B[][TP_CVP_MX], int u, double bs[][TP_CVP_MX], double mu[][TP_CVP_MX], double *n2)
 {
     for (int i = 0; i < u; i++) {
@@ -1435,6 +1517,7 @@ static void gso_i64(long B[][TP_CVP_MX], int u, double bs[][TP_CVP_MX], double m
         n2[i] = a;
     }
 }
+/* LLL reduction of a small int64 basis. */
 static void lll_i64(long B[][TP_CVP_MX], int u)
 {
     fmpz_mat_t A; fmpz_mat_init(A, u, u);
@@ -1443,6 +1526,7 @@ static void lll_i64(long B[][TP_CVP_MX], int u)
     for (int i = 0; i < u; i++) for (int k = 0; k < u; k++) B[i][k] = fmpz_get_si(fmpz_mat_entry(A, i, k));
     fmpz_mat_clear(A);
 }
+/* BKZ with block size beta for a few tours (TP_CVP_BKZ): a stronger basis makes enumeration cheaper. */
 static void bkz_i64(long B[][TP_CVP_MX], int u, int beta, int tours)
 {
     static __thread double bs[TP_CVP_MX][TP_CVP_MX], mu[TP_CVP_MX][TP_CVP_MX]; double n2[TP_CVP_MX];
@@ -1469,6 +1553,7 @@ static void bkz_i64(long B[][TP_CVP_MX], int u, int beta, int tours)
     }
 }
 #endif
+/* Prepare the lattice enumeration test per level (basis, Gram-Schmidt data, box widths). Cached per bit length. */
 static void cvp_build(hexplan *p, const tp_orbits *o, const int *lvl)
 {
     memset(p->cvp, 0, sizeof p->cvp);
@@ -1768,7 +1853,7 @@ static void cvp_build(hexplan *p, const tp_orbits *o, const int *lvl)
                 free(best); best = L; bestd = d;
             } else { free(L); }
             _fmpz_vec_clear(M, TP_CVP_MX); fmpz_clear(N); fmpz_clear(t); fmpz_clear(R); fmpz_clear(cinv); fmpz_clear(den);
-            if (!good && best) break;              /* costs only grow as we move up the tree */
+            if (!good && best) break;              /* costs only grow moving up the tree */
         }
         if (best) g_cvc.lev[bestd] = best;
         g_cvc.key_n = o->nsites; g_cvc.key_h = oh; g_cvc.bud = bud; g_cvc.K = Kov;
@@ -1778,6 +1863,9 @@ static void cvp_build(hexplan *p, const tp_orbits *o, const int *lvl)
 #endif
 }
 
+/* Build the deep Bloom reach filters (TP_BLOOM=U:bits,...): for levels with U undecided orbits, store every
+ * reachable residue mod 5^K in a Bloom filter (no false negatives), so the search can test a deeper 5-adic target
+ * than the exact R5 tables allow. */
 static void bf_build(hexplan *p, const tp_orbits *o, const int *lvl)
 {
     p->bK = 0; memset(p->bat, 0, sizeof p->bat); p->bfp = NULL;
@@ -1865,6 +1953,9 @@ static void bf_build(hexplan *p, const tp_orbits *o, const int *lvl)
     pthread_mutex_unlock(&g_bf_mu);
 }
 
+/* Per-bit-length preparation used by every entry point: read the feature and self-check switches, choose the 5-adic
+ * modulus (5^13 on machines with >= 12 GB RAM and long lengths, else 5^12), compute the viable digit table per level
+ * and the set/clear masks, the per-digit residues mod 11 and 5^J, and build whichever reach tests are enabled. */
 static int hexplan_prepare(hexplan *p, const tp_orbits *o)
 {
     /* every entry point (serial, threaded, sharded) builds a plan, so the
@@ -2058,6 +2149,7 @@ static int hexplan_prepare(hexplan *p, const tp_orbits *o)
     return 0;
 }
 
+/* Free the per-plan arrays (cached reach tables stay for the next call with the same orbits). */
 static void hexplan_free(hexplan *p)
 {
     free(p->setm);   p->setm = NULL;
@@ -2158,6 +2250,11 @@ static void r5_prefixcheck(const tp_search *s, const hexplan *p, int d, const ch
     }
 }
 
+/* The production search kernel: one node = one hex digit pair at depth d (outer digit d and its mirror).
+ * Order of work at each node: hand the subtree to the task list at the threading cut; otherwise, for each
+ * viable digit value, update lo/hi and the running residues, compute the shared decimal prefix of the child's
+ * interval, run the 2-adic test, then the 5-adic reach tests that are enabled, and recurse. At the last level the
+ * remaining number is complete and is tested for being a decimal palindrome. */
 static __attribute__((noinline)) void
 hexdfs(tp_search *s, const hexplan *p, int d, const dec9 *dnp,
        const uint64_t *Rp, int mp, int s_sum, int s_outer,
@@ -2657,6 +2754,7 @@ hexdfs(tp_search *s, const hexplan *p, int d, const dec9 *dnp,
     }
 }
 
+/* Start hexdfs at depth d from the state in s: seed the residues of lo (mod 11, 5^J, 5^K) and its decimal form. */
 static void hexdfs_from(tp_search *s, const hexplan *p, int d, int s_sum, int s_outer,
                         tp_hit_fn onhit, void *ud)
 {
@@ -2687,6 +2785,7 @@ static void hexdfs_from(tp_search *s, const hexplan *p, int d, int s_sum, int s_
     hexdfs(s, p, d, &d0, R0, 0, s_sum, s_outer, onhit, ud);
 }
 
+/* Single-threaded production search of one bit length B (used by tests and small lengths). */
 int tp_hexdfs_run(int B, unsigned inv, tp_stats *out,
                   tp_hit_fn onhit, void *ud, int trace)
 {
@@ -2774,6 +2873,7 @@ int tp_hexdfs_run(int B, unsigned inv, tp_stats *out,
 /* DFS                                                                */
 /* ------------------------------------------------------------------ */
 
+/* The original orbit DFS (one free orbit per level, highest site first), used by the `search` command. */
 static void dfs(tp_search *s, int d,
                 const char *dlo, int dl, const char *dhi, int dh,
                 tp_hit_fn onhit, void *ud)
@@ -2854,6 +2954,7 @@ static void dfs(tp_search *s, int d,
 /* public entry points                                                */
 /* ------------------------------------------------------------------ */
 
+/* Smallest depth whose 2^depth subtrees give at least target_units work units (deterministic, so checkpoints stay valid). */
 int tp_split_depth(int nfree, int target_units)
 {
     int d = 0;
@@ -2862,6 +2963,7 @@ int tp_split_depth(int nfree, int target_units)
     return d;
 }
 
+/* Enumerate the work units of the orbit DFS (paths to depth stop_depth) without searching below them. */
 void tp_search_enum_units(tp_search *s)
 {
     char dlo[TP_DECBUF], dhi[TP_DECBUF];
@@ -2873,6 +2975,7 @@ void tp_search_enum_units(tp_search *s)
     dfs(s, 0, dlo, dl, dhi, dh, NULL, NULL);
 }
 
+/* Search one work unit: replay its path from the root, then run dfs below it. */
 void tp_search_run_unit(tp_search *s, const tp_unit *u,
                         tp_hit_fn onhit, void *ud)
 {
@@ -2910,6 +3013,7 @@ typedef struct {
 
 typedef struct { hxpool *pool; int idx; } hxarg;
 
+/* Thread body for the production search: take tasks (subtrees at the cut depth) from the shared list and run them. */
 static void *hx_worker(void *argp)
 {
     hxarg *a = argp;
@@ -2954,6 +3058,7 @@ static void *hx_worker(void *argp)
 static int g_shard_k = 0, g_shard_n = 1;
 int tp_hexdfs_sharded(void) { return g_shard_n > 1; }
 
+/* Restrict this process to shard k of n (tasks with index = k mod n), for splitting one length across machines. */
 void tp_hexdfs_set_shard(int k, int n)
 {
     if (n < 1) n = 1;
@@ -2962,6 +3067,7 @@ void tp_hexdfs_set_shard(int k, int n)
     g_shard_k = n ? (k % n) : 0;
 }
 
+/* Multithreaded search of one bit length with a fixed cut depth: build the plan, collect the tasks, run them on nthreads. */
 static int hexdfs_mt_once(int B, unsigned inv, int nthreads, int cut,
                           tp_stats *out, tp_hit_fn onhit, void *ud)
 {
@@ -3142,6 +3248,7 @@ int tp_hexdfs_run_mt(int B, unsigned inv, int nthreads, int cut,
     }
 }
 
+/* Print cycle counters when built with TP_PROF2 (profiling only). */
 void tp_prof_dump(void)
 {
 #ifdef TP_PROF2

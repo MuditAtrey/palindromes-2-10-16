@@ -1,3 +1,16 @@
+/* main.c - command line driver.
+ *
+ * Commands (see usage() below):
+ *   search     the original orbit DFS over a range of bit lengths, with checkpointing and threads
+ *   hexdfs     the production search: outside-in over hex digit pairs (search.c), all certified runs used this
+ *   bench      node counts and timings per bit length, pruning on and off
+ *   estimate   projected run time for a range
+ *   selftest   brute force below 2^k, the OEIS A007632 ground truth, and agreement between search modes
+ *   verify     check given numbers in bases 2, 10 and 16 (independent of the search code)
+ *   orbits     print the orbit structure of one bit length (development aid)
+ *
+ * Every feature switch of the search itself is an environment variable read in search.c (TP_R5, TP_DUAL, TP_CVP,
+ * TP_OFFSET, TP_WEAKPAL and the self-check switches); README.md in this folder lists them. */
 /* tripal - command line driver */
 #define _GNU_SOURCE
 #include "tripal.h"
@@ -7,6 +20,7 @@
 #include <unistd.h>
 #include <math.h>
 
+/* Wall-clock seconds (monotonic), for timings. */
 double tp_now(void)
 {
     struct timespec ts;
@@ -14,6 +28,7 @@ double tp_now(void)
     return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
 
+/* Format a large count such as 2^nfree for printing (plain, or as 2^x when huge). */
 void tp_fmt_space(double v, char *buf, size_t n)
 {
     if (v < 1e6)          snprintf(buf, n, "%.0f", v);
@@ -55,6 +70,7 @@ typedef struct {
     int             verbose;
 } hitctx_t;
 
+/* Called by the search for every solution: print it, log it to the checkpoint, and optionally collect it for tests. */
 static void hit_cb(void *ud, int B, const bn_t *n, const char *dec, int len)
 {
     (void)len;
@@ -98,6 +114,7 @@ typedef struct {
     int            verbose;
 } worker_t;
 
+/* Thread body for `search`: take the next unfinished work unit, run it, mark it done, stop on deadline or limit. */
 static void *worker_main(void *arg)
 {
     worker_t *w = (worker_t *)arg;
@@ -120,6 +137,7 @@ static void *worker_main(void *arg)
     return NULL;
 }
 
+/* a += b, field by field (merging per-thread statistics). */
 static void stats_add(tp_stats *a, const tp_stats *b)
 {
     a->nodes    += b->nodes;
@@ -237,6 +255,7 @@ static int run_bit_length(const cfg_t *cf, int B, tp_ckpt *ck, hitctx_t *hc,
 /* search command                                                     */
 /* ================================================================== */
 
+/* `tripal search`: run every bit length in the requested range with the orbit DFS, threads and checkpoints. */
 static int cmd_search(const cfg_t *cf)
 {
     int bfrom = cf->bits_from, bto = cf->bits_to;
@@ -314,6 +333,7 @@ static int cmd_search(const cfg_t *cf)
 /* bench command                                                      */
 /* ================================================================== */
 
+/* `tripal bench`: per bit length, compare brute-force size with the pruned tree (nodes, prunes, leaves, time). */
 static int cmd_bench(const cfg_t *cf, int *list, int n)
 {
     printf("| %5s | %3s | %3s | %16s | %14s | %13s | %8s | %9s |\n",
@@ -368,6 +388,7 @@ static int cmd_bench(const cfg_t *cf, int *list, int n)
 /* estimate: exact node counts and projected runtimes for a bit range  */
 /* ================================================================== */
 
+/* `tripal estimate`: exact node counts for small lengths and a projected run time for the range. */
 static int cmd_estimate(int bfrom, int bto, int threads, double rate)
 {
     if (bfrom < 1) bfrom = 1;
@@ -432,12 +453,14 @@ static int cmd_estimate(int bfrom, int bto, int threads, double rate)
 /* hexdfs: outside-in hex-digit traversal (alternative tree shape)     */
 /* ================================================================== */
 
+/* Hit callback for `hexdfs`: print the number in decimal as a HIT line (the sweep scripts parse these). */
 static void hexdf_hit(void *ud, int L, const bn_t *n, const char *dec, int declen)
 {
     (void)ud; (void)n; (void)L; (void)declen;
     printf("HIT %s\n", dec);
 }
 
+/* `tripal hexdfs`: the production search over hex lengths, one table row per bit length. */
 static int cmd_hexdfs(int bfrom, int bto, int trace, int threads, int cut)
 {
     if (bfrom < 1) bfrom = 1;
@@ -482,6 +505,7 @@ static int cmd_hexdfs(int bfrom, int bto, int trace, int threads, int cut)
 /* brute force reference                                              */
 /* ================================================================== */
 
+/* Brute-force referee for 64-bit n: palindrome in bases 2, 10 and 16, checked digit by digit. */
 static inline int is_tri_pal_u64(uint64_t n)
 {
     if (n == 0) return 1;
@@ -529,6 +553,8 @@ static int ref_enum(int bfrom, int bto, uint64_t *out, int maxout)
 /* selftest                                                           */
 /* ================================================================== */
 
+/* Load OEIS A007632 (palindromes in bases 2 and 10) from data/oeis/b007632.txt, keeping terms below 2^maxbits.
+ * The self-test drops the base-16 condition and checks that the engine reproduces exactly this list. */
 static int load_b007632(uint64_t *out, int maxn, int maxbits)
 {
     const char *paths[] = { "data/oeis/b007632.txt",
@@ -552,12 +578,18 @@ static int load_b007632(uint64_t *out, int maxn, int maxbits)
     return n;
 }
 
+/* qsort comparator for uint64_t. */
 static int cmp_u64(const void *a, const void *b)
 {
     uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
     return x < y ? -1 : x > y;
 }
 
+/* `tripal selftest`: three independent checks.
+ *   1. brute force over every n < 2^brute_bits against the engine;
+ *   2. the engine in base-2/10 mode (hex mirror off) against OEIS A007632;
+ *   3. the reference enumerator ref_enum (shares no code with the engine) against the engine up to ref_bits.
+ * The Python suite in tests/ adds the pruning-specific positive controls. */
 static int cmd_selftest(const cfg_t *cf, int brute_bits, int dual_bits,
                         int ref_bits)
 {
@@ -741,6 +773,7 @@ static int cmd_selftest(const cfg_t *cf, int brute_bits, int dual_bits,
 /* verify command                                                     */
 /* ================================================================== */
 
+/* Parse a decimal number, or a hex number with a 0x prefix. */
 static int parse_num(const char *s, bn_t *out, int nw)
 {
     if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
@@ -758,6 +791,7 @@ static int parse_num(const char *s, bn_t *out, int nw)
     return bn_from_dec(s, nw, out);
 }
 
+/* `tripal verify n ...`: print each n in decimal and hex and say whether it is a palindrome in bases 2, 10 and 16. */
 static int cmd_verify(int argc, char **argv)
 {
     if (argc < 1) { fprintf(stderr, "usage: tripal verify <n>...\n"); return 2; }
@@ -790,6 +824,7 @@ static int cmd_verify(int argc, char **argv)
 /* argument parsing                                                   */
 /* ================================================================== */
 
+/* Parse a comma separated list of integers such as "48,80,128". */
 static int parse_int_list(const char *s, int *out, int maxn)
 {
     int n = 0;
@@ -803,6 +838,7 @@ static int parse_int_list(const char *s, int *out, int maxn)
 static int cmd_orbits(int B);
 static double g_rate = 12e6;
 
+/* Print the command summary. */
 static void usage(void)
 {
     printf(
@@ -835,6 +871,7 @@ static void usage(void)
 );
 }
 
+/* Parse the command line and dispatch to one of the cmd_* functions above. */
 int main(int argc, char **argv)
 {
     if (argc < 2) { usage(); return 2; }

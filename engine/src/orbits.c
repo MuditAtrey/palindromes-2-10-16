@@ -1,6 +1,6 @@
 /* Generic union-find orbit construction.
  *
- * A "site" is a bit position 0 .. nsites-1 of the pattern we are building.
+ * A "site" is a bit position 0 .. nsites-1 of the pattern being built.
  * The constraints placed on the pattern are involutions on sites:
  *
  *   binary mirror   B(i) = B - 1 - i                    (i < B)
@@ -19,12 +19,14 @@
 #include "tripal.h"
 #include <math.h>
 
+/* Union-find: return the representative of x, compressing the path along the way. */
 static int uf_find(int *p, int x)
 {
     while (p[x] != x) { p[x] = p[p[x]]; x = p[x]; }
     return x;
 }
 
+/* Union-find: merge the classes of a and b. */
 static void uf_union(int *p, int a, int b)
 {
     a = uf_find(p, a);
@@ -32,6 +34,8 @@ static void uf_union(int *p, int a, int b)
     if (a != b) p[a] = b;
 }
 
+/* Force component c to bit value v. Returns -1 if c was already forced to the other value (the bit length is then
+ * impossible), else 0. */
 static int setval(tp_orbits *o, int c, int8_t v)
 {
     if (o->cval[c] < 0) { o->cval[c] = v; return 0; }
@@ -65,6 +69,14 @@ static void sort_free(tp_orbits *o)
     }
 }
 
+/* Build the orbit structure for bit length B.
+ *
+ * Sites are the bit positions. With inv = binary and hex mirrors, two sites belong to one orbit when a chain of
+ * mirror maps connects them, so they must carry the same bit. Each orbit is then a single yes/no decision. The
+ * function merges the mirror pairs, applies the forced values (top bit 1, hex padding 0), rejects inconsistent
+ * lengths, and orders the free orbits by their highest site (descending), which is the order the search decides them.
+ * For B a multiple of 4 this yields exactly the hex palindromes whose digits are bit-reversal symmetric:
+ * {0, 6, 9, F}; for B = 3 mod 4 the digits are {0, 2, 5, 7} with a 3-bit top digit. */
 int tp_orbits_build(tp_orbits *o, int B, unsigned inv)
 {
     memset(o, 0, sizeof *o);
@@ -170,6 +182,7 @@ oom:
     return -1;
 }
 
+/* Release everything tp_orbits_build allocated. */
 void tp_orbits_free(tp_orbits *o)
 {
     free(o->comp);      o->comp = NULL;
@@ -181,6 +194,7 @@ void tp_orbits_free(tp_orbits *o)
     free(o->mask);      o->mask = NULL;
 }
 
+/* Size of the unpruned search space, 2^nfree, as a double (for display and estimates). */
 double tp_orbits_space(const tp_orbits *o)
 {
     return ldexp(1.0, o->nfree);

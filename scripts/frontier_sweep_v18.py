@@ -12,7 +12,7 @@ auditable.  Any HIT line is flagged loudly; a nonzero return code stops the swee
 import argparse, json, os, re, subprocess, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BIN = os.path.join(ROOT, "agent_submission_v18", "tripal", "tripal")
+BIN = os.path.join(ROOT, "engine", "tripal")
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--from", dest="h0", type=int, default=1)
@@ -47,7 +47,7 @@ for h in range(a.h0, a.h1 + 1):
     rec = dict(hex=h, bits=[b0, b1], rc=p.returncode, seconds=round(dt, 2),
                nodes=int(m.group(1)) if m else None, hits=int(m.group(4)) if m else None,
                hit_lines=hits, r5=a.r5, sieve=a.sieve, threads=a.threads,
-               engine="agent_submission_v18+" + ("dual+" if os.environ.get("TP_DUAL") else "") + ("cvp" if os.environ.get("TP_CVP") else "fastk"))
+               engine="tripal_v18+" + ("dual+" if os.environ.get("TP_DUAL") else "") + ("cvp" if os.environ.get("TP_CVP") else "fastk"))
     with open(summ, "a") as f:
         f.write(json.dumps(rec) + "\n")
     print(f"hex {h:3d} bits {b0}-{b1}: {rec['nodes']} nodes, {rec['hits']} hits, {dt:.1f}s"
