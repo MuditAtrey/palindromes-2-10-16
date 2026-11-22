@@ -3,7 +3,7 @@
 **Result.** Apart from 0, 1, 3, 5, 7 and 9, there is no integer below **2^472** (about 1.22 x 10^142) that reads the same
 forwards and backwards in binary, decimal and hexadecimal at the same time.
 
-This is an exhaustive computer search: every one of the roughly 2^118 candidate numbers below 2^472 that is a palindrome in
+This is an exhaustive computer search: every one of the roughly 9 x 10^35 (about 2^119) candidate numbers below 2^472 that is a palindrome in
 base 2 and base 16 was either checked directly or ruled out by an exact mathematical test. No probabilistic or heuristic
 step is involved, and every pruning test in the certified configuration uses integer arithmetic only.
 
