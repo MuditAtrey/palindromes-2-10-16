@@ -8,6 +8,9 @@ appropriate credit, link to the license, and indicate if changes were made.
 
 Full legal text: https://creativecommons.org/licenses/by/4.0/legalcode
 
+Exception: engine/data/oeis/b007632.txt is a copy of OEIS data and stays under CC BY-SA 4.0 (share-alike); see
+engine/data/oeis/README.md and CREDITS.md.
+
 Source code (C, Python and shell files) is licensed under the MIT License in LICENSE.
 
 How to credit: see CITATION.cff, or cite as

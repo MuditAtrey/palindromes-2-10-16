@@ -23,6 +23,8 @@ of every approach that did not settle it.
 | [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md), [docs/PROOF_RESEARCH.md](docs/PROOF_RESEARCH.md) | the research log behind them |
 | [scripts/](scripts) | sweeps, sharding for several machines, planted controls, and the research scripts the documents cite |
 | [commitment/](commitment), [COMMITMENT.md](COMMITMENT.md), [verify/](verify) | the timestamped commitment and a script that checks this release against it |
+| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | start here if you are new: setup, first runs, reading order, glossary, how to contribute |
+| [CREDITS.md](CREDITS.md) | everyone whose work this builds on, with links |
 
 ## What exactly was done
 
@@ -96,11 +98,15 @@ Later commits only add comments and documentation; the compiled engine is identi
   to 2^255 (November 2026); [nevdelap/pp](https://github.com/nevdelap/pp) searched the prime version to 256 bits.
 - OEIS: [A007632](https://oeis.org/A007632) (bases 2 and 10), [A029731](https://oeis.org/A029731) (bases 10 and 16),
   [A340559](https://oeis.org/A340559) (bases 2 and 16).
+- The question was posed publicly by Rick Regan, [In Search of Decimal/Binary/Hexadecimal Palindromes](https://www.exploringbinary.com/in-search-of-decimal-binary-hexadecimal-palindromes/)
+  (Exploring Binary, 2010).
+
+The full list of people, papers, data and software this builds on, with links, is in [CREDITS.md](CREDITS.md).
 
 ## Citing and license
 
 If you use the engine, the results or the methods, please cite this repository; [CITATION.cff](CITATION.cff) has the details
 (GitHub shows a "Cite this repository" button). Code is under the [MIT License](LICENSE); documents, results and data are
-under [CC BY 4.0](LICENSE-docs), which requires credit.
+under [CC BY 4.0](LICENSE-docs), which requires credit. The bundled OEIS data file is CC BY-SA 4.0 (see CREDITS.md).
 
 Questions, scrutiny and challenges are welcome as GitHub issues.
