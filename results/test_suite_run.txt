@@ -1,0 +1,54 @@
+building ...
+
+=== tripal test suite ===
+
+  [32mPASS[0m  python verifier self-test
+  [32mPASS[0m  search finds exactly {1,3,5,7,9} below 2^32   [[1, 3, 5, 7, 9]]
+  [32mPASS[0m  engine selftest (brute force + OEIS A007632 + re-verification)   [ref_bits=46]
+  [32mPASS[0m  A007632 reproduced exactly for all terms < 2^48   [50 terms]
+  [32mPASS[0m  C reference enumeration == Python enumeration, B<=40   [5 values]
+  [32mPASS[0m  results identical across (threads, split depth)   [T1/U1:3038052 T1/U64:3038052 T2/U256:3038052 T4/U4096:3038052]
+  [32mPASS[0m  independent Python verifier accepts every hit   [5 verified, 0 rejected, 5 distinct]
+  [32mPASS[0m  checkpoint pieces sum to the whole run   [5656616 == 5656616 over 4 pieces]
+  [32mPASS[0m  SIGKILL mid-run then resume to completion   [45 units survived the kill]
+  [32mPASS[0m  a fully checkpointed range does zero work on rerun
+  [32mPASS[0m  hexdfs agrees with brute force below 2^32   [hexdfs=[1, 3, 5, 7, 9]]
+  [32mPASS[0m  hexdfs hex 31-38 tree reproduces 1,728,434 nodes, 0 hits   [1728434 nodes]
+  [32mPASS[0m  pruner agrees with the two-conversion reference at every node
+  [32mPASS[0m  positive control: a deliberately unsound pruner IS caught
+  [32mPASS[0m  shards partition the tree exactly (3 shards sum to the unsplit run)   [212 vs 212]
+  [32mPASS[0m  a hit is reported once across shards, not once per shard   [HIT lines 1 vs 1, counter 1 vs 1]
+  [32mPASS[0m  leaf sieve changes no hit and no node (5 known hits, same tree)   [on=['1', '3', '5', '7', '9'] off=['1', '3', '5', '7', '9'] nodes 9472 vs 9472]
+  [32mPASS[0m  weak-palindrome control is non-vacuous   [2682 hits, 9482583 nodes]
+  [32mPASS[0m  weak control: 5-adic reach filter, J=5 loses no hit   [hits 2682 vs 2682, nodes 60265 vs 9482583]
+  [32mPASS[0m  weak control: 5-adic reach filter, J=3 loses no hit   [hits 2682 vs 2682, nodes 784563 vs 9482583]
+  [32mPASS[0m  weak control: digit-sum / leading-2 sieve (--sieve) loses no hit   [hits 2682 vs 2682, nodes 5842651 vs 9482583]
+  [32mPASS[0m  weak control: reach filter + sieve loses no hit   [hits 2682 vs 2682, nodes 60165 vs 9482583]
+  [32mPASS[0m  reach filter: sampled real completions are all inside the reach set   [2092872 samples, 0 outside; 325832 prefix samples, 0 mismatch]
+  [32mPASS[0m  weak control: deep reach filter (--bloom) loses no hit   [hits 5367 vs 5367, nodes 18565090 vs 260109030]
+  [32mPASS[0m  deep reach filter: carried residue, target and sampled members all correct   [16 filters checked, nodes 5898563]
+  [32mPASS[0m  weak control J=6: dual certificate loses no hit   [hits 5367 vs 5367, nodes 37400822 vs 260109030]
+  [32mPASS[0m  weak control J=7: dual certificate loses no hit   [hits 488 vs 488, nodes 2459012 vs 129628304]
+  [32mPASS[0m  weak control J=8: dual certificate loses no hit   [hits 49 vs 49, nodes 154527 vs 63766563]
+  [32mPASS[0m  weak control J=6: learned windows lose no hit   [hits 5367 vs 5367, nodes 9811086 vs 260109030]
+  [32mPASS[0m  weak control J=8: learned windows lose no hit   [hits 49 vs 49, nodes 162867 vs 63766563]
+  [32mPASS[0m  learned windows: real sums never rejected   [262 levels checked, nodes 5566870]
+  [32mPASS[0m  weak control J=6: Fourier certificate loses no hit   [hits 166 vs 166, nodes 1208670 vs 20762406]
+  [32mPASS[0m  weak control J=8: Fourier certificate loses no hit   [hits 4 vs 4, nodes 17882 vs 6941610]
+  [32mPASS[0m  Fourier certificate: real sums never rejected   [168 levels checked, nodes 1926758]
+  [32mPASS[0m  dual certificate: real sums never rejected, targets match the decimal string   [262 levels checked, nodes 5847006]
+  [32mPASS[0m  weak control J=6: lattice enumeration loses no hit   [hits 5367 vs 5367, nodes 67234530 vs 260109030]
+  [32mPASS[0m  weak control J=7: lattice enumeration loses no hit   [hits 488 vs 488, nodes 28239480 vs 129628304]
+  [32mPASS[0m  weak control J=8: lattice enumeration loses no hit   [hits 49 vs 49, nodes 26717547 vs 63766563]
+  [32mPASS[0m  lattice enumeration: every genuine sum is found   [534 levels checked, nodes 2705320408]
+  [32mPASS[0m  sibling sharing gives identical nodes to the per-child path   [nodes 54395518 vs 54395518]
+  [32mPASS[0m  weak control J=7: shared dual + lattice path loses no hit   [hits 488 vs 488, nodes 879044 vs 129628304]
+  [32mPASS[0m  weak control J=7: lattice enumeration on seeded basis 1 loses no hit   [hits 488 vs 488, nodes 28239480 vs 129628304]
+  [32mPASS[0m  weak control J=7: lattice enumeration on seeded basis 2 loses no hit   [hits 488 vs 488, nodes 28239480 vs 129628304]
+  [32mPASS[0m  offset mode with c = 0 equals the real search   [nodes 20303608 vs 20303608]
+  [32mPASS[0m  planted solutions found by the full stack (1 and 4 threads)   [10 of 10]
+  [32mPASS[0m  TP_* switches behave identically on 1 and 4 threads   [nodes 521228/521228, hits 146/146]
+  [32mPASS[0m  mod-11 leaf sieve: carried residue equals the true residue   [hits 5]
+
+47 passed, 0 failed in 313.5s
+RESULT: [32mALL TESTS PASSED[0m

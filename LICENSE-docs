@@ -1,0 +1,15 @@
+Documentation, results and data: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright (c) 2026 Mudit Atrey
+
+Everything in this repository that is not source code (the Markdown documents, the result logs in results/, and the data
+files) is licensed under CC BY 4.0. You may share and adapt it for any purpose, including commercially, provided you give
+appropriate credit, link to the license, and indicate if changes were made.
+
+Full legal text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+Source code (C, Python and shell files) is licensed under the MIT License in LICENSE.
+
+How to credit: see CITATION.cff, or cite as
+  Mudit Atrey, "Numbers palindromic in bases 2, 10 and 16: exhaustive search below 2^472", 2026,
+  https://github.com/MuditAtrey/palindromes-2-10-16

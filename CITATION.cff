@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this search engine, its results or its methods, please cite it as below."
+title: "Numbers palindromic in bases 2, 10 and 16: exhaustive search below 2^472"
+authors:
+  - family-names: Atrey
+    given-names: Mudit
+date-released: 2026-11-22
+version: "1.0"
+url: "https://github.com/MuditAtrey/palindromes-2-10-16"
+repository-code: "https://github.com/MuditAtrey/palindromes-2-10-16"
+license: MIT
+keywords:
+  - palindromes
+  - number theory
+  - multi-base palindromes
+  - exhaustive search
+  - OEIS A007632
+  - OEIS A029731
+  - OEIS A340559
+abstract: >-
+  An exhaustive, integer-only search showing that no integer N with 9 < N < 2^472 is a palindrome in bases 2, 10 and 16
+  at the same time, with the search engine (tripal), its 47-test suite, planted-solution controls, a timestamped
+  commitment, and research notes on why no known proof method covers every length.
